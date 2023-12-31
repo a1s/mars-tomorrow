@@ -1,0 +1,257 @@
+<html><head>
+  <title>Mars Tommorrow Building Calculator</title>
+  <link rel="stylesheet" href="//unpkg.com/element-plus/dist/index.css" />
+  <script src="https://unpkg.com/vue@3"></script>
+  <script src="https://unpkg.com/vue-i18n@9"></script>
+  <script src="//unpkg.com/element-plus"></script>
+  <style>
+    html {
+      font-family: 'Noto Sans', 'Source Sans Pro', -apple-system, 'Segoe UI', Roboto, serif;
+      font-size: 14px;
+    }
+    .el-header,.el-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .el-tab-pane {
+      margin-left: 16px;
+    }
+    .el-col {
+      padding: 8px;
+    }
+    .label {
+      text-align: right;
+    }
+    .value {
+      font-weight: bold;
+    }
+  </style>
+</head><body>
+<div id="app">
+  <el-container>
+    <el-header>
+      <h1>{{ $t('title') }}</h1>
+      <el-select v-model="$i18n.locale">
+        <el-option v-for="lang in languages" :key="lang.code"
+          :label="lang.title" :value="lang.code" />
+      </el-select>
+    </el-header>
+    <el-main>
+      <el-tabs tab-position="left" v-model="building">
+        <el-tab-pane v-for="(calc, code) in buildings" :name="code"
+          :label="$t('building.' + code)"
+        >
+          <h2>{{ $t('building.' + code) }}</h2>
+          <el-row>
+            <el-col :span="6" class="label">{{ $t('label.level') }}</el-col>
+            <el-col :span="12">
+              <el-input-number v-model="buildingLevel"
+                :min="code == 'hangar' ? 2 : 1" :max="calc.maxLevel" />
+            </el-col>
+          </el-row>
+          <el-row>
+            <el-col :span="6" class="label">{{ $t('label.phase') }}</el-col>
+            <el-col :span="12">
+              <el-input-number v-model="phase" :min="1" :max="8" />
+            </el-col>
+          </el-row>
+          <el-row>
+            <el-col :span="6" class="label">{{ $t('label.days_to_eop') }}</el-col>
+            <el-col :span="12">
+              <el-input-number v-model="eop" :min="0" :max="isSpeed ? 4 : 9" />
+            </el-col>
+          </el-row>
+          <el-row>
+            <el-col :span="12" :offset="6">
+              <el-checkbox v-model="isSpeed" :label="$t('label.speed_server')" />
+            </el-col>
+          </el-row>
+          <el-row>
+            <el-col :span="6" class="label">{{ $t('label.utc_offset') }}</el-col>
+            <el-col :span="12">
+              <el-input-number v-model="tzoffset" :min="-12" :max="12" />
+              {{ $t('label.hours', tzoffset) }}
+            </el-col>
+          </el-row>
+          <el-row>
+            <el-col :span="6" class="label">{{ $t('label.now') }}</el-col>
+            <el-col :span="12" class="value">{{ $d(now, 'dt') }}</el-col>
+          </el-row>
+          <el-row v-for="item in results">
+            <el-col :span="6" class="label">{{ item[0] }}</el-col>
+            <el-col :span="12" class="value">{{ item[1] }}</el-col>
+          </el-row>
+        </el-tab-pane>
+      </el-tabs>
+    </el-main>
+    <el-footer>
+      <p><small>Copyright 2024 Aleksandr Smyshliaev</small></p>
+      <p><small>
+        Based on the works of <strong>gregzet</strong>
+        and <strong>Sunny007</strong>.
+      </small></p>
+      <p><small>
+        By using this calculator you accept the terms
+        of the <a href="https://opensource.org/license/mit/">MIT License</a>.
+      </small></p>
+    </el-footer>
+  <el-container>
+</div>
+
+<script type="module">
+  const messages = {
+    en: {
+      building: {
+        hangar: 'Hangar',
+        ri: 'Research institute',
+        safe: 'Safe',
+      },
+      label: {
+        base_price: 'Base price:',
+        build_time: 'Time to build:',
+        days_to_eop: 'Full days to the end of phase:',
+        hours: 'hour | hours',
+        level: 'Upgrade to level:',
+        now: 'Current time:',
+        phase: 'Phase:',
+        speed_server: 'Speed server',
+        utc_offset: 'UTC offset:',
+      },
+      lang: 'English',
+      title: 'Mars Tommorrow Building Calculator'
+    },
+    de: {
+      building: {
+        hangar: 'Hangar',
+        ri: 'Forschungsinstitut',
+        safe: 'Tresor',
+      },
+      label: {
+        base_price: 'Basispreis:',
+        build_time: 'Bauzeit:',
+        days_to_eop: 'Volle Tage bis zum Ende der Phase:',
+        level: 'Upgrade auf Level:',
+        hours: 'Stunde | Stunden',
+        now: 'Aktuelle Uhrzeit:',
+        phase: 'Phase:',
+        speed_server: 'Speedserver',
+        utc_offset: 'UTC-Offset:',
+      },
+      lang: 'Deutsch',
+      title: 'Mars Tommorrow Baupreisberechnung',
+    }
+  }
+
+  const datetimeFormats = {}
+  for (const lang in messages) {
+    datetimeFormats[lang] = {
+      dt: {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+      }
+    }
+  };
+
+  const i18n = VueI18n.createI18n({
+    locale: 'en',
+    fallbackLocale: 'en',
+    messages,
+    datetimeFormats,
+  })
+
+  const app = Vue.createApp({
+    data () {
+      const today = new Date()
+      return {
+        building: 'ri',
+        buildingLevel: 2,
+        phase: 1,
+        tzoffset: -today.getTimezoneOffset() / 60,
+        eop: 5,
+        isSpeed: false,
+        now: new Date(),
+      }
+    },
+    mounted () {
+      this.updateTime();
+    },
+    computed: {
+      languages: () => Object.entries(messages).map(
+        ([code, messages]) => ({code, title: messages.lang})),
+      buildings () {
+        return {
+          hangar: {
+            maxLevel: 26,
+            k3: 1700,
+            k2: -3600,
+            k1: -6900,
+            k0: 15300,
+          },
+          ri: {
+            k3: 110,
+            k2: 160,
+            k1: -3670,
+            k0: 2890,
+          },
+          safe: {
+            k3: 800,
+            k2: -1600,
+            k1: 800,
+            k0: -300
+          },
+        };
+      },
+      upgradePrice () {
+        const lvl = this.buildingLevel
+        const cost = this.buildings[this.building]
+        return cost.k3 * lvl**3 + cost.k2 * lvl**2 + cost.k1 * lvl + cost.k0
+      },
+      upgradeTime () {
+        const lvl = this.buildingLevel
+        let seconds = 0
+        switch (this.building) {
+          case 'ri':
+            seconds = -16307 * lvl**5 / 360360
+              + 49311 * lvl**4 / 5720
+              - 236078599 * lvl**3 / 360360
+              + 425939047 * lvl**2 / 17160
+              - 28126475459 * lvl / 60060
+              + 45795129 / 13
+              break
+          case 'safe':
+            seconds = -84487 * lvl**5 / 15120
+              + 569605 * lvl**4 / 756
+              - 122323021 * lvl**3 / 3024
+              + 204291254 * lvl**2 / 189
+              - 6036791473 * lvl / 420
+              + 1598189737 / 21
+              break
+        };
+        if (!this.isSpeed) seconds *= 2
+        return new Date(seconds * 1000).toISOString().slice(11, 19)
+      },
+      results () {
+        return [
+          [this.$t('label.base_price'), this.$n(this.upgradePrice)],
+          [this.$t('label.build_time'), this.upgradeTime],
+        ]
+      },
+    },
+    methods: {
+      updateTime () {
+        this.now = new Date()
+        setTimeout(this.updateTime, 1000)
+      },
+    },
+  })
+  app.use(i18n)
+  app.use(ElementPlus)
+  app.mount('#app')
+</script>
+</body></html>
+<!-- vim: set ai et si sts=2 sw=2 : -->
